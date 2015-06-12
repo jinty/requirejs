@@ -1236,8 +1236,9 @@ var requirejs, require, define;
             while (defQueue.length) {
                 args = defQueue.shift();
                 if (args[0] === null) {
-                    return onError(makeError('mismatch', 'Mismatched anonymous define() module: ' +
-                        args[args.length - 1]));
+                    if (console !== undefined) {
+                        console.log('Ignoring anonymous module: deps: ' + args[1] + ' callback: ' + String(args[2]).slice(0, 200) + '...');
+                    }
                 } else {
                     //args are id, deps, factory. Should be normalized by the
                     //define() function.
@@ -1541,27 +1542,36 @@ var requirejs, require, define;
             completeLoad: function (moduleName) {
                 var found, args, mod,
                     shim = getOwn(config.shim, moduleName) || {},
-                    shExports = shim.exports;
+                    shExports = shim.exports,
+                    anonMods = [];
 
                 takeGlobalQueue();
 
                 while (defQueue.length) {
+                    // Try find the module in the define queue by name first
                     args = defQueue.shift();
                     if (args[0] === null) {
-                        args[0] = moduleName;
-                        //If already found an anonymous module and bound it
-                        //to this name, then this is some other anon module
-                        //waiting for its completeLoad to fire.
-                        if (found) {
-                            break;
+                        anonMods.push(args);
+                    } else {
+                        if (args[0] === moduleName) {
+                            //Found matching define call for this script!
+                            found = true;
                         }
-                        found = true;
-                    } else if (args[0] === moduleName) {
-                        //Found matching define call for this script!
-                        found = true;
+                        callGetModule(args);
                     }
+                }
 
+                if (!found && anonMods.length) {
+                    // We didn't find the module by a non-anonymous define() call
+                    // So we just assume it is the first anonymous one is it...
+                    args = anonMods.shift();
+                    args[0] = moduleName;
+                    found = true;
                     callGetModule(args);
+                }
+
+                if (anonMods.length && console !== undefined) {
+                    console.log('Found more anonymous modules than I should have: ' + anonMods.length);
                 }
 
                 //Do this after the cycle of callGetModule in case the result
